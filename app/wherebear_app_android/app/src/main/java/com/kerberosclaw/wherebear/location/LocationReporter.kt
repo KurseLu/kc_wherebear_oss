@@ -126,6 +126,15 @@ object LocationReporter {
     /** 回前景：立刻補送離線佇列（對應 iOS onEnterForeground） */
     fun onEnterForeground() {
         refreshPermissionState()
+
+        // 🔴 自我修復：回到前景是「允許啟動前景服務」的時機。
+        // 開關是開的，就無條件補起一次 —— 因為在背景時 ReportingService.start() 可能
+        // 被系統擋掉而只回 false（見該函式的註解），那條路只能在這裡接回來。
+        // 服務本來就在跑也沒關係：onStartCommand 只會重下一次 location request。
+        if (_isReporting.value && hasForegroundLocation(appContext)) {
+            ReportingService.start(appContext)
+        }
+
         val uid = WBAuth.userId ?: return
         scope.launch { flushOutbox(uid); flushVisitOutbox() }
     }

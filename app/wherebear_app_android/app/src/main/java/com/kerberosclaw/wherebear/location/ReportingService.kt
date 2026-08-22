@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -125,15 +126,43 @@ class ReportingService : Service() {
             mgr.createNotificationChannel(ch)
         }
 
-        fun start(context: Context) {
+        /**
+         * 啟動回報服務。回傳 true = 真的起起來了。
+         *
+         * 🔴 **絕對不要讓這裡的例外往外丟。**
+         * Android 12 起禁止從背景啟動前景服務（`ForegroundServiceStartNotAllowedException`）。
+         * 這個函式有四個呼叫點，其中兩條會在背景執行：
+         *   · `WhereBearApp.onCreate` —— 系統把被回收的程序拉回來時
+         *   · `BootReceiver` 收到 `MY_PACKAGE_REPLACED`（`BOOT_COMPLETED` 是官方豁免、這個不是）
+         *
+         * 例外從 `Application.onCreate` 逃出去的後果不是「這次沒起來」，是**整個 app 冷啟動就崩**，
+         * 而系統每次想把它拉回來又再崩一次 —— 回報從此不會自己恢復，得使用者手動打開 app。
+         *
+         * 實測（ASUS Zenfone 11 Ultra / Android 15）：
+         *   2026-08-19 15:57、08-20 22:00 各崩一次，位置分別斷了 5 小時與整晚。
+         *
+         * 起不來不是死路：`LocationReporter.onEnterForeground()` 會在回到前景時補一次，
+         * 那時候啟動前景服務是合法的。
+         */
+        fun start(context: Context): Boolean {
             ensureChannel(context)
             val i = Intent(context, ReportingService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(i)
-            } else {
-                context.startService(i)
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(i)
+                } else {
+                    context.startService(i)
+                }
+                true
+            } catch (e: IllegalStateException) {
+                // ForegroundServiceStartNotAllowedException（API 31+）繼承自 IllegalStateException，
+                // catch 父型別就不用為了型別本身再做一次版本判斷。
+                Log.w(TAG_START, "背景中不能啟動前景服務，等回前景再補：${e.message}")
+                false
             }
         }
+
+        private const val TAG_START = "WBReportingService"
 
         fun stop(context: Context) {
             context.stopService(Intent(context, ReportingService::class.java))
