@@ -30,12 +30,11 @@
         android:allowBackup="false"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.WhereBear">
 
-        <!-- usesCleartextTraffic：只為 dev 端點（本機 supabase 走 http）；
-             要更嚴可改成 network_security_config 只放行你的 LAN IP。
-             對應 iOS 的 NSAllowsLocalNetworking。 -->
+        <!-- usesCleartextTraffic 只在 debug 變體開（見 src/debug/AndroidManifest.xml）：
+             那是為了連本機 supabase 的 http 端點。放在這裡的話 release 會一併繼承，
+             等於正式版對任意明文 HTTP 全開。對應 iOS 的 NSAllowsLocalNetworking。 -->
 
         <meta-data
             android:name="com.google.android.geo.API_KEY"

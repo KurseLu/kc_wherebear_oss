@@ -28,6 +28,20 @@ android {
         manifestPlaceholders["mapsApiKey"] = prop("WB_MAPS_API_KEY", "MISSING_MAPS_API_KEY")
     }
 
+    // release 簽章：keystore 放 repo 外（~/.keystores），密碼住 gitignored 的 local.properties。
+    // 沒設定時整段跳過 → release 仍可組出未簽章 APK，不會讓沒有 keystore 的人 build 失敗。
+    signingConfigs {
+        val ksPath = prop("WB_RELEASE_STORE_FILE")
+        if (ksPath.isNotBlank() && file(ksPath).exists()) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = prop("WB_RELEASE_STORE_PASSWORD")
+                keyAlias = prop("WB_RELEASE_KEY_ALIAS", "wherebear")
+                keyPassword = prop("WB_RELEASE_KEY_PASSWORD", prop("WB_RELEASE_STORE_PASSWORD"))
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".dev"          // 與 iOS 的 dev 變體 app 同構：可與 prod 並存
@@ -37,6 +51,7 @@ android {
             buildConfigField("String", "ENV_NAME", "\"dev\"")
         }
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "SUPABASE_URL", "\"${prop("WB_SUPABASE_URL")}\"")
@@ -65,6 +80,9 @@ dependencies {
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.3")
+    // registerForActivityResult 要求 fragment >= 1.3.0；沒宣告的話 lintVital 會擋掉 release build
+    // （debug 不跑 lintVital，所以只有 release 會炸）
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-process:2.8.7")
@@ -92,4 +110,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
 
     testImplementation("junit:junit:4.13.2")
+    // Android SDK 內建的 org.json 在 unit test 裡是空殼，一呼叫就丟 RuntimeException("Stub!")。
+    // Outbox 整個以 JSONObject 為單位，不接真的實作就測不到。
+    testImplementation("org.json:json:20240303")
 }
