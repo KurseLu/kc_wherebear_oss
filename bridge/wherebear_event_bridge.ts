@@ -176,7 +176,14 @@ while (true) {
     const sb = createClient(PROJECT_URL, GATEWAY || tok.token, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    sb.realtime.setAuth(tok.token);
+    // 🔴 這個 await 不能拿掉（2026-08-23 實測）。
+    //    import 寫的是浮動版本 `npm:@supabase/supabase-js@2`，現在解析到 2.112.3，
+    //    而這幾版的 RealtimeClient.setAuth() 已經是 **async**（早期是同步的）。
+    //    不 await 的話它跟下面的 subscribe() 打架：join 成功之後那張 token 才被推上去，
+    //    伺服器當場把連線關掉 —— log 長成「已訂閱 → 150ms 後 CLOSED → 重連」無限循環，
+    //    17 秒內訂閱 7 次。加上 await 之後同樣的環境跑 20 秒、訂閱 1 次、零重連。
+    //    症狀騙人的地方在於「已訂閱」有印出來，看起來像連上了。
+    await sb.realtime.setAuth(tok.token);
 
     // 到期前 60 秒重換並推給連線（不必重連）
     const refreshIn = Math.max(30, tok.ttl_s - 60) * 1000;
